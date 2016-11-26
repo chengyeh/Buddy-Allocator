@@ -50,20 +50,22 @@
  **************************************************************************/
 typedef struct {
 	struct list_head list;
-	/* TODO: DECLARE NECESSARY MEMBER VARIABLES */
+	int order;
+	int index;
+	char* address;
 } page_t;
 
 /**************************************************************************
  * Global Variables
  **************************************************************************/
 /* free lists*/
-struct list_head free_area[MAX_ORDER+1];
+struct list_head free_area[MAX_ORDER + 1];
 
 /* memory area */
-char g_memory[1<<MAX_ORDER];
+char g_memory[1 << MAX_ORDER];
 
 /* page structures */
-page_t g_pages[(1<<MAX_ORDER)/PAGE_SIZE];
+page_t g_pages[(1 << MAX_ORDER) / PAGE_SIZE];
 
 /**************************************************************************
  * Public Function Prototypes
@@ -76,13 +78,17 @@ page_t g_pages[(1<<MAX_ORDER)/PAGE_SIZE];
 /**
  * Initialize the buddy system
  */
-void buddy_init()
-{
+void buddy_init() {
 	int i;
-	int n_pages = (1<<MAX_ORDER) / PAGE_SIZE;
+	int n_pages = (1 << MAX_ORDER) / PAGE_SIZE;
 	for (i = 0; i < n_pages; i++) {
-		/* TODO: INITIALIZE PAGE STRUCTURES */
+		INIT_LIST_HEAD(&g_pages[i].list);
+		g_pages[i].order = -1;
+		g_pages[i].index = i;
+		g_pages[i].address = PAGE_TO_ADDR(i);
 	}
+
+	g_pages[0].order = MAX_ORDER;
 
 	/* initialize freelist */
 	for (i = MIN_ORDER; i <= MAX_ORDER; i++) {
@@ -93,6 +99,16 @@ void buddy_init()
 	list_add(&g_pages[0].list, &free_area[MAX_ORDER]);
 }
 
+void split_memory(page_t* page, int order, int order_required) {
+	if (order == order_required) {
+		return;
+	}
+
+	page_t* buddy = &g_pages[ADDR_TO_PAGE(BUDDY_ADDR(page->address,(order-1)))];
+	buddy->order = order - 1;
+	list_add(&(buddy->list), &free_area[(order - 1)]);
+	split_memory(page, order - 1, order_required);
+}
 /**
  * Allocate a memory block.
  *
@@ -107,9 +123,25 @@ void buddy_init()
  * @param size size in bytes
  * @return memory block address
  */
-void *buddy_alloc(int size)
-{
-	/* TODO: IMPLEMENT THIS FUNCTION */
+void *buddy_alloc(int size) {
+	if (size > (1 << MAX_ORDER) || size <= 0) {
+		return NULL;
+	}
+
+	int o = MIN_ORDER;
+	while ((o < MAX_ORDER) && ((1 << o) < size)) {
+		o++;
+	}
+
+	for (int i = o; i <= MAX_ORDER; i++) {
+		if (!list_empty(&free_area[i])) {
+			page_t *page = list_entry(free_area[i].next, page_t, list);
+			list_del_init(&(page->list));
+			split_memory(page, i, o);
+			page->order = o;
+			return ((void*) (page->address));
+		}
+	}
 	return NULL;
 }
 
@@ -132,16 +164,16 @@ void buddy_free(void *addr)
  *
  * print free pages in each order.
  */
-void buddy_dump()
-{
+void buddy_dump() {
 	int o;
 	for (o = MIN_ORDER; o <= MAX_ORDER; o++) {
 		struct list_head *pos;
 		int cnt = 0;
-		list_for_each(pos, &free_area[o]) {
+		list_for_each(pos, &free_area[o])
+		{
 			cnt++;
 		}
-		printf("%d:%dK ", cnt, (1<<o)/1024);
+		printf("%d:%dK ", cnt, (1 << o) / 1024);
 	}
 	printf("\n");
 }
