@@ -157,6 +157,37 @@ void *buddy_alloc(int size) {
 void buddy_free(void *addr)
 {
 	/* TODO: IMPLEMENT THIS FUNCTION */
+	int current_index = ADDR_TO_PAGE(addr);
+	page_t* free_page = &g_pages[current_index];
+	int current_order= free_page->order;
+	char found;
+
+	for (; current_order < MAX_ORDER; current_order++) {
+		page_t* buddy = &g_pages[ADDR_TO_PAGE(BUDDY_ADDR(free_page->address, current_order))];
+		struct list_head* current;
+		found = 0;
+
+		list_for_each (current, &free_area[current_order]) {
+			page_t* temp = list_entry(current, page_t, list);
+
+			if (temp == buddy) {
+				found = 1;
+			}
+		}
+
+		if (!found) {
+			break;
+		}
+		else {
+			list_del_init(&buddy->list);
+			if (buddy < free_page) {
+				free_page = buddy;
+			}
+		}
+	}
+
+	free_page->order = current_order;
+	list_add(&free_page->list, &free_area[current_order]);
 }
 
 /**
